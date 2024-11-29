@@ -1,0 +1,13 @@
+---
+title: "p8105_hw6_ez2384"
+output: github_document
+---
+
+```{r setup}
+
+  library(tidyverse)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+
+```
