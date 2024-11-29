@@ -6,8 +6,15 @@ output: github_document
 ```{r setup}
 
   library(tidyverse)
-  library(dplyr)
-  library(tidyr)
-  library(ggplot2)
+  library(p8105.datasets)
+  install.packages("p8105.datasets")
 
 ```
+
+```{r}
+
+  data("nyc_airbnb")
+  
+
+```
+
