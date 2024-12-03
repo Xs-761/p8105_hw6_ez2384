@@ -228,7 +228,7 @@ output: github_document
   
 ```
 
-##### Building and Commentting on Reduced Model          
+##### Remark on Building and Commentting on Reduced Model          
 -   Initial Full Model includes all predictors.   
 -   Backward selection was applied using `stepAIC()` to remove predictors that did not significantly improve the model based on the AIC, which retains all statistically meaningful predictors and excludes all non-significant predictors to reduce complexity and enhance interpretability.   
 -   The Final Model includes the following predictors   
@@ -250,25 +250,36 @@ output: github_document
 ```{r p3 cross-validation, message=FALSE, warning=FALSE}
 
   set.seed(1)
-  cv_splits = crossv_mc(birthweight_data, n = 100)
-  
-  rmse = function(model, data) { sqrt(mean((data$bwt - predict(model, newdata = data))^2)) }
+  cv_splits = crossv_mc(birthweight_data, n = 100) %>%
+              mutate(
+                train = map(train, as.data.frame),
+                test = map(test, as.data.frame)
+              )
+
+  rmse = function(model, data) {
+                                  if (is.null(data$bwt)) {
+                                                            stop("bwt column missing in test data")
+                                                          }
+                                  preds = predict(model, newdata = data)
+                                  sqrt(mean((data$bwt - preds)^2))
+                                }
   
   cv_results = cv_splits %>%
                mutate(
-                       backward = map(train, ~lm(bwt ~ blength+bhead+gaweeks+wtgain+fincome+mheight+parity+babysex+mrace, data = .x)),
-                         model1 = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
-                         model2 = map(train, ~lm(bwt ~ bhead * blength * babysex, data = .x)),
-                  backward_rmse = map2_dbl(backward, test, rmse),
-                    model1_rmse = map2_dbl(model1, test, rmse),
-                    model2_rmse = map2_dbl(model2, test, rmse)
-                )
-  head(cv_results)
-
+                      backward = map(train, ~lm(bwt ~ blength+bhead+gaweeks+wtgain+fincome+mheight+parity+babysex+mrace, data = .x)),
+                      model1 = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+                      model2 = map(train, ~lm(bwt ~ bhead * blength * babysex, data = .x)),
+                      backward_rmse = map2_dbl(backward, test, rmse),
+                      model1_rmse = map2_dbl(model1, test, rmse),
+                      model2_rmse = map2_dbl(model2, test, rmse)
+                    )
+    
+  cv_results %>% select(backward_rmse, model1_rmse, model2_rmse)
+  
 ```
 
 
-```{r p3 plot, fig.height=7, fig.width=7}
+```{r p3 plots, fig.height=6, fig.width=8}
 
   birthweight_data = birthweight_data %>%
                       add_predictions(backward_model, var = "predicted_bwt") %>%
@@ -286,6 +297,35 @@ output: github_document
     theme_light() +
     theme( plot.title = element_text(hjust=.5), )
   
-```
+  cv_summary = cv_results %>%
+               summarize(
+                 backward_rmse = mean(backward_rmse),
+                   model1_rmse = mean(model1_rmse),
+                   model2_rmse = mean(model2_rmse)
+               )
 
+  cv_results_long <- cv_results %>%
+                     pivot_longer(cols = c(backward_rmse, model1_rmse, model2_rmse), names_to = "model", values_to = "rmse")
+  
+  ggplot(data=cv_results_long, mapping=aes(x = model, y = rmse, fill=model)) +
+    geom_violin() +
+    stat_summary(fun = median, geom = "point", shape = 21, size = 1.5, fill = "white", color = "black") +
+      stat_summary(fun = mean, geom = "point", shape = 23, size = 1.5, fill = "red", color = "black") +
+    labs(
+      title = "Cross-Validated RMSE for Each Model",
+      x = "Model",
+      y = "RMSE"
+    ) +
+    theme_light() +
+    theme( plot.title = element_text(hjust=.5), )
+
+```
+  
+##### Remark on RMSE across models  
+- The backward model (red) shows the smallest spread of RMSE values, indicating consistent performance across cross-validation splits.
+  The first model (green) has the largest spread of RMSE values, suggesting greater variability in performance.
+  The second model (blue) also shows a compact distribution similar to the backward model, though slightly more dispersed.    
+- The backward model exhibits the lowest RMSE median and mean, demonstrating its superior predictive accuracy compared to the other models.
+  The first model has the highest median and mean RMSE, indicating weaker predictive performance.   
+- Overall, the backward selection model appears to be the best model overall, with both lower RMSE values and less variability.   
 
