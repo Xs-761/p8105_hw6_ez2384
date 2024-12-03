@@ -228,7 +228,7 @@ output: github_document
   
 ```
 
-##### Remark    
+##### Comments on Building Models       
 -   Initial Full Model includes all predictors.   
 -   Backward selection was applied using `stepAIC()` to remove predictors that did not significantly improve the model based on the AIC, which retains all statistically meaningful predictors and excludes all non-significant predictors to reduce complexity and enhance interpretability.   
 -   The Final Model includes the following predictors   
