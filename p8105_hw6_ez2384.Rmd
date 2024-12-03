@@ -39,7 +39,7 @@ output: github_document
 -   Function of `tmax` against `tmin`.
 -   Produces estimates of R\^2 and log quantities per bootstrap sample.
 
-```{r Bootstrap Samples, message=FALSE, warning=FALSE}
+```{r p1 Bootstrap Samples, message=FALSE, warning=FALSE}
 
   bootstrap_samples = weather_df %>% modelr::bootstrap(n = 5000)
   bootstrap_results = bootstrap_samples %>% 
@@ -53,7 +53,7 @@ output: github_document
 
 ##### Plot of estimate distributions and remark
 
-```{r Distribution Plots, message=FALSE, warning=FALSE, fig.width=8, fig.height=8}
+```{r p1 Distribution Plots, message=FALSE, warning=FALSE, fig.width=8, fig.height=8}
 
   R2_plot = bootstrap_results %>%
             ggplot(aes(x=r_squared)) +
@@ -88,7 +88,7 @@ output: github_document
 
 ##### Upper & Lower Quantiles
 
-```{r 95%CI}
+```{r p1 95%CI}
 
   quantile(bootstrap_results$r_squared, probs = c(.025, .975)) %>% 
     tibble(
@@ -134,7 +134,7 @@ output: github_document
 
 -   Creates and Stores a Logistic Regression Model, Extract OR and confidence intervals for `Baltimore, MD`.
 
-```{r Logistic Regression Model}
+```{r p2 Logistic Regression Model}
 
   baltimore_model = glm(
                       indicator ~ victim_age + victim_sex + victim_race,
@@ -153,7 +153,7 @@ output: github_document
 
 -   Repeat for each cities in the dataset.
 
-```{r GLM for each city, warning=FALSE, message=FALSE}
+```{r p2 GLM for each city, warning=FALSE, message=FALSE}
 
   city_results = homicide_data %>%
                  group_by(city_state) %>%
@@ -175,7 +175,7 @@ output: github_document
 
 -   Create the Plot.
 
-```{r Plot, fig.width=10, fig.height=8}
+```{r p2 Plot, fig.width=10, fig.height=8}
 
   ggplot(data=city_results, mapping=aes(x = reorder(city_state, estimate), y = estimate)) +
     geom_point(size=.8) +
@@ -203,7 +203,7 @@ output: github_document
 
 ### Problem 3
 
-```{r prob3 data cleaning}
+```{r p3 data cleaning}
 
   birthweight_data = read.csv(file="../../Datasets/birthweight.csv") %>% 
                      mutate(
@@ -216,7 +216,7 @@ output: github_document
 
 ```
 
-```{r main birthweight model}
+```{r p3 main birthweight model}
 
   full_model = lm(
                   bwt ~ blength + bhead + gaweeks + wtgain + fincome + mheight + parity + babysex + mrace + frace + malform, 
@@ -238,7 +238,7 @@ output: github_document
         -    `babysex`(ref="Female"), `mrace`(ref="1")    
 -   The reduced model has an adjusted R^2 of 0.7107 which implies a pretty good fit and about 71% of the variance in the birthweight can be explained by the reduced model. The residual error of 275.5 grams suggests the typical deviation of observed birthweights from those predicted by the model is 275.5 grams.    
 
-```{r birthweight models for comparison}
+```{r p3 birthweight models for comparison}
 
   model_1 = lm(bwt ~ blength + gaweeks, data = birthweight_data)
   summary(model_1)
@@ -247,7 +247,7 @@ output: github_document
   
 ```
 
-```{r, cross-validation, message=FALSE, warning=FALSE}
+```{r p3 cross-validation, message=FALSE, warning=FALSE}
 
   set.seed(1)
   cv_splits = crossv_mc(birthweight_data, n = 100)
@@ -268,7 +268,7 @@ output: github_document
 ```
 
 
-```{r prob3 plot, fig.height=7, fig.width=7}
+```{r p3 plot, fig.height=7, fig.width=7}
 
   birthweight_data = birthweight_data %>%
                       add_predictions(backward_model, var = "predicted_bwt") %>%
