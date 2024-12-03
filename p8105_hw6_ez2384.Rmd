@@ -228,14 +228,15 @@ output: github_document
   
 ```
 
-##### Comments on Building Models       
+##### Building and Commentting on Reduced Model          
 -   Initial Full Model includes all predictors.   
 -   Backward selection was applied using `stepAIC()` to remove predictors that did not significantly improve the model based on the AIC, which retains all statistically meaningful predictors and excludes all non-significant predictors to reduce complexity and enhance interpretability.   
 -   The Final Model includes the following predictors   
     -   continuous variables    
         -   `blength`, `bhead`, `gaweeks`, `wtgain`, `fincome`, `mheight`, `parity`   
     -   categorical variables   
-        -    `babysex`(ref="Female"), `mrace`(ref="1")
+        -    `babysex`(ref="Female"), `mrace`(ref="1")    
+-   The reduced model has an adjusted R^2 of 0.7107 which implies a pretty good fit and about 71% of the variance in the birthweight can be explained by the reduced model. The residual error of 275.5 grams suggests the typical deviation of observed birthweights from those predicted by the model is 275.5 grams.    
 
 ```{r birthweight models for comparison}
 
