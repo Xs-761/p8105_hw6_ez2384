@@ -3,18 +3,288 @@ title: "p8105_hw6_ez2384"
 output: github_document
 ---
 
-```{r setup}
+```{r setup, message=FALSE}
 
-  library(tidyverse)
   library(p8105.datasets)
-  install.packages("p8105.datasets")
+  library(tidyverse)
+  library(dplyr)
+  library(readr)
+  library(modelr)
+  library(patchwork)
 
 ```
 
-```{r}
+### Problem 1
 
-  data("nyc_airbnb")
+##### Extract Data
+
+```{r p1 Extract Data, message=FALSE}
+
+  weather_df = 
+    rnoaa::meteo_pull_monitors(
+      c("USW00094728"),
+      var = c("PRCP", "TMIN", "TMAX"), 
+      date_min = "2017-01-01",
+      date_max = "2017-12-31") %>%
+    mutate(
+      name = recode(id, USW00094728 = "CentralPark_NY"),
+      tmin = tmin / 10,
+      tmax = tmax / 10) %>%
+    select(name, id, everything())
+
+```
+
+##### Generate 5000 Bootstrap Samples, obtain R2 and log quantities
+
+-   Function of `tmax` against `tmin`.
+-   Produces estimates of R\^2 and log quantities per bootstrap sample.
+
+```{r Bootstrap Samples, message=FALSE, warning=FALSE}
+
+  bootstrap_samples = weather_df %>% modelr::bootstrap(n = 5000)
+  bootstrap_results = bootstrap_samples %>% 
+                      mutate(
+                        models    = map(.x=strap, .f=~lm(tmax~tmin, data=.x)),
+                        r_squared = map_dbl(.x=models, .f=~broom::glance(.x)$r.squared),
+                        log_betas = map_dbl(.x=models, .f=~log(coef(.x)[1]*coef(.x)[2]))
+                      )
   
+```
+
+##### Plot of estimate distributions and remark
+
+```{r Distribution Plots, message=FALSE, warning=FALSE, fig.width=8, fig.height=8}
+
+  R2_plot = bootstrap_results %>%
+            ggplot(aes(x=r_squared)) +
+              geom_histogram(bins=100, fill="blue", alpha=.75, color="black", size=.25) +
+              labs(
+                title = "Distribution of R^2 Estimates",
+                    x = "R^2 Estimates",
+                    y = "Frequency"
+              ) +
+              xlim(.85,1)+
+              ylim(0,500)+
+              theme_light()+
+              theme(plot.title = element_text(hjust=.5))
+  
+  Log_plot = bootstrap_results %>%
+             ggplot(aes(x=log_betas)) +
+             geom_histogram(bins=100, fill="darkgreen", alpha=.75, color="black", size=.25) +
+             labs(
+                  title = "Distribution of log(β0*β1) Estimates",
+                      x = "log(β0*β1) Estimates",
+                      y = "Frequency"
+                 ) +
+             theme_light()+
+             theme(plot.title = element_text(hjust=.5))
+  
+  R2_plot / Log_plot
+  
+```
+
+-   R2_plot: A unimodal, slightly symmetric distribution of R2 values centered around 0.92, indicating high model performance across bootstrap samples. This reflects that the linear model `tmax∼tmin` consistently explains a high proportion of the variance in tmax (maximum temperature) across bootstrap samples. The plot reflects a statistical robust linear relationship of `tmax∼tmin`.
+-   log(ß0\*ß1)\_plot: The histogram displays a slightly right-skewed distribution of values, concentrated between 1.90 and 2.10, with most falling near 2.00. This indicates that the product of the intercept ß0 and slope ß1 in the regression model has a consistent logarithmic value, with minor variations across bootstrap samples. The plot indicates a predictable interaction between the intercept and slope, with only minor variations in their combined influence.
+
+##### Upper & Lower Quantiles
+
+```{r 95%CI}
+
+  quantile(bootstrap_results$r_squared, probs = c(.025, .975)) %>% 
+    tibble(
+            `95% CI bounds for R2` = c("lower bound", "upper bound"),
+                Value = round(., 4)
+          ) %>% 
+  select(`95% CI bounds for R2`, Value) %>% 
+  knitr::kable()
+
+  quantile(bootstrap_results$log_betas, probs = c(.025, .975)) %>% 
+    tibble(
+            `95% CI bounds for log(ß0*ß1)` = c("lower bound", "upper bound"),
+                Value = round(., 4)
+          ) %>% 
+  select(`95% CI bounds for log(ß0*ß1)`, Value) %>% 
+  knitr::kable()
+  
+```
+
+### Problem 2
+
+##### Preparation and Mutation of Dataset
+
+-   Create variable `city_state` as instructed, and create variable `indicator` to indicate whether the homicide has been resolved.
+-   Cities `Dallas, TX`, `Phoenix, AZ`, `Kansas City, MO`, `Tulsa, AL` has been omitted.
+-   Per instruction, `victim_age` has been turned to numeric type from chr, with non-numeric cell values converted into `NA`.
+
+```{r p2 Extract and Prepare the Dataset}
+
+  homicide_data = read.csv("../../Datasets/homicide_data.csv") %>%
+                  mutate(
+                    city_state = paste(city, state, sep=", "),
+                     indicator = ifelse(disposition=="Closed by arrest", 1, 0)
+                  ) %>% 
+                  filter(!city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")) %>% 
+                  filter(victim_race %in% c("Black", "White")) %>% 
+                  mutate(
+                    victim_age = ifelse(grepl("[^0-9]", victim_age), NA, victim_age),
+                    victim_age = as.numeric(victim_age)
+                  )
 
 ```
+
+-   Creates and Stores a Logistic Regression Model, Extract OR and confidence intervals for `Baltimore, MD`.
+
+```{r Logistic Regression Model}
+
+  baltimore_model = glm(
+                      indicator ~ victim_age + victim_sex + victim_race,
+                           data = homicide_data %>% filter(city_state == "Baltimore, MD"),
+                         family = "binomial"
+                    )
+  baltimore_model  
+
+  baltimore_summary = broom::tidy(baltimore_model, conf.int = TRUE, exp = TRUE)
+  
+  baltimore_summary %>%
+    filter(term == "victim_sexMale") %>%
+    select(term, estimate, conf.low, conf.high)
+  
+```
+
+-   Repeat for each cities in the dataset.
+
+```{r GLM for each city, warning=FALSE, message=FALSE}
+
+  city_results = homicide_data %>%
+                 group_by(city_state) %>%
+                 nest() %>%
+                 mutate(
+                        model = map(.x=data, .f= ~ glm( 
+                                                      indicator ~ victim_age + victim_sex + victim_race,
+                                                      family = "binomial",
+                                                        data = .x
+                                                   )
+                                ),
+                         tidy_model = map(.x=model, .f= ~ broom::tidy(.x, conf.int = TRUE, exp = TRUE)),
+                        sex_results = map(.x=tidy_model, .f= ~ filter(.x, term == "victim_sexMale"))
+                 ) %>%
+                 select(city_state, sex_results) %>%
+                 unnest(sex_results)
+
+```
+
+-   Create the Plot.
+
+```{r Plot, fig.width=10, fig.height=8}
+
+  ggplot(data=city_results, mapping=aes(x = reorder(city_state, estimate), y = estimate)) +
+    geom_point(size=.8) +
+    geom_errorbar(mapping=aes(ymin = conf.low, ymax = conf.high), width = .2, size=.4) +
+    coord_flip() +
+    labs(
+      title = "Adjusted Odds Ratios & CI for Solving Homicides comparing Male with Female Victims",
+      x = "City",
+      y = "Adjusted Odds Ratios comparing Male vs, Female"
+    ) +
+    theme_light()+
+    theme( plot.title = element_text(hjust=.5), )
+
+```
+
+##### Remarks on Plot
+
+-   The plot highlights a pervasive trend across most cities where homicides involving male victims are less likely to be solved compared to female victims. This is evident as the majority of the odds ratios for solving homicides for male victims compared to female victims are below 1, indicating that male victims are generally less likely to have their cases solved than female victims.
+
+-   While this finding applies to many cities and is supported by confidence intervals that exclude 1, there are several cities, such as `Las Vegas, NV`, and `San Bernardino, CA`, where the 95% confidence intervals overlap with 1. This overlap suggests that the observed difference in solving rates for male and female victims may not be statistically significant in these cities.
+
+-   Cities like `Albuquerque, NM`, `Stockton, CA`, and `Fresno, CA` exhibit very wide confidence intervals that overlap with 1, indicating high uncertainty in the estimates for these cities.
+
+-   A few cities, such as `San Francisco, CA`, and `New Orleans, LA`, have odds ratios close to 1 with confidence intervals overlapping 1. This suggests no significant difference in solving rates for male versus female victims in these cities.
+
+### Problem 3
+
+```{r prob3 data cleaning}
+
+  birthweight_data = read.csv(file="../../Datasets/birthweight.csv") %>% 
+                     mutate(
+                        babysex = factor(babysex, labels = c("Male", "Female")),
+                          frace = factor(frace),
+                        malform = factor(malform, labels = c("Absent", "Present")),
+                          mrace = factor(mrace)
+                     ) %>% 
+                     drop_na()
+
+```
+
+```{r main birthweight model}
+
+  full_model = lm(
+                  bwt ~ blength + bhead + gaweeks + wtgain + fincome + mheight + parity + babysex + mrace + frace + malform, 
+                  data = birthweight_data
+               )
+  summary(full_model)
+  backward_model = MASS::stepAIC(full_model, direction = "backward")
+  summary(backward_model)
+  
+```
+
+##### Remark    
+-   Initial Full Model includes all predictors.   
+-   Backward selection was applied using `stepAIC()` to remove predictors that did not significantly improve the model based on the AIC, which retains all statistically meaningful predictors and excludes all non-significant predictors to reduce complexity and enhance interpretability.   
+-   The Final Model includes the following predictors   
+    -   continuous variables    
+        -   `blength`, `bhead`, `gaweeks`, `wtgain`, `fincome`, `mheight`, `parity`   
+    -   categorical variables   
+        -    `babysex`(ref="Female"), `mrace`(ref="1")
+
+```{r birthweight models for comparison}
+
+  model_1 = lm(bwt ~ blength + gaweeks, data = birthweight_data)
+  summary(model_1)
+  model_2 = lm(bwt ~ bhead*blength*babysex, data = birthweight_data)
+  summary(model_2)
+  
+```
+
+```{r, cross-validation, message=FALSE, warning=FALSE}
+
+  set.seed(1)
+  cv_splits = crossv_mc(birthweight_data, n = 100)
+  
+  rmse = function(model, data) { sqrt(mean((data$bwt - predict(model, newdata = data))^2)) }
+  
+  cv_results = cv_splits %>%
+               mutate(
+                       backward = map(train, ~lm(bwt ~ blength+bhead+gaweeks+wtgain+fincome+mheight+parity+babysex+mrace, data = .x)),
+                         model1 = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+                         model2 = map(train, ~lm(bwt ~ bhead * blength * babysex, data = .x)),
+                  backward_rmse = map2_dbl(backward, test, rmse),
+                    model1_rmse = map2_dbl(model1, test, rmse),
+                    model2_rmse = map2_dbl(model2, test, rmse)
+                )
+  head(cv_results)
+
+```
+
+
+```{r prob3 plot, fig.height=7, fig.width=7}
+
+  birthweight_data = birthweight_data %>%
+                      add_predictions(backward_model, var = "predicted_bwt") %>%
+                      add_residuals(backward_model, var = "residuals")
+  head(birthweight_data)
+
+  ggplot(birthweight_data, aes(x = predicted_bwt, y = residuals)) +
+    geom_point(size=.5) +
+    geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+    labs(
+      title = "Residuals vs. Fitted Values (Backward Selection Model)",
+      x = "Fitted Values (Predicted Birthweight)",
+      y = "Residuals"
+    ) +
+    theme_light() +
+    theme( plot.title = element_text(hjust=.5), )
+  
+```
+
 
